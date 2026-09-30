@@ -1,0 +1,30 @@
+{
+  "description": "Send gws commands to Git Bash, and keep tracked tasks' status up to date before Claude stops",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/block-gws-in-powershell.js"],
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/stop-guard.mjs"],
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

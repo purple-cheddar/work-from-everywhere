@@ -1,0 +1,14 @@
+{
+  "name": "work-from-everywhere",
+  "owner": {
+    "name": "purple-cheddar"
+  },
+  "description": "Tracked tasks with proof for Claude Code, backed by Google Sheets and Google Drive",
+  "plugins": [
+    {
+      "name": "work-from-everywhere",
+      "source": "./",
+      "description": "Tracked tasks with proof: /work-from-everywhere logs each task in a Google Sheet, captures device screenshots and video, and files them in Google Drive."
+    }
+  ]
+}

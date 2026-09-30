@@ -1,0 +1,16 @@
+# Google credentials must never be committed
+client_secret*.json
+credentials*.json
+service-account*.json
+*.enc
+.env
+.env.*
+
+# Dependencies. Playwright installs into the plugin's data folder, not here.
+node_modules/
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
