@@ -3,7 +3,7 @@
 // gws exit codes: 0 success, 1 API error, 2 sign-in missing, expired or invalid,
 // 3 bad arguments, 4 couldn't fetch the API schema, 5 internal error.
 
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -22,22 +22,43 @@ function findGws() {
   return null;
 }
 
-let command;
+let cached;
+const gwsCommand = () => (cached === undefined ? (cached = findGws()) : cached);
 
-// Returns { status, json, text, stderr }, or { missing: true } when gws isn't installed.
-export function runGws(args, { cwd } = {}) {
-  if (command === undefined) command = findGws();
-  if (!command) return { missing: true };
-  const [cmd, ...pre] = command;
-  const r = spawnSync(cmd, [...pre, ...args], { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-  if (r.error) return r.error.code === 'ENOENT' ? { missing: true } : { status: -1, json: null, text: '', stderr: r.error.message };
-  const text = (r.stdout || '').trim();
+function outcome(status, stdout, stderr) {
+  const text = (stdout || '').trim();
   let json = null;
   try {
     json = text ? JSON.parse(text) : {};
   } catch {
     // not JSON; callers fall back to text
   }
-  const stderr = (r.stderr || '').replace(/^Using keyring backend.*$/gm, '').trim();
-  return { status: r.status, json, text, stderr };
+  return { status, json, text, stderr: (stderr || '').replace(/^Using keyring backend.*$/gm, '').trim() };
+}
+
+const spawnFailure = (error) => (error.code === 'ENOENT' ? { missing: true } : { status: -1, json: null, text: '', stderr: error.message });
+
+// Returns { status, json, text, stderr }, or { missing: true } when gws isn't installed.
+export function runGws(args, { cwd } = {}) {
+  const command = gwsCommand();
+  if (!command) return { missing: true };
+  const [cmd, ...pre] = command;
+  const r = spawnSync(cmd, [...pre, ...args], { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  return r.error ? spawnFailure(r.error) : outcome(r.status, r.stdout, r.stderr);
+}
+
+// The same without blocking, so several calls can run at once.
+export function runGwsAsync(args, { cwd } = {}) {
+  const command = gwsCommand();
+  if (!command) return Promise.resolve({ missing: true });
+  const [cmd, ...pre] = command;
+  return new Promise((resolve) => {
+    const child = spawn(cmd, [...pre, ...args], { cwd });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8').on('data', (chunk) => (stdout += chunk));
+    child.stderr.setEncoding('utf8').on('data', (chunk) => (stderr += chunk));
+    child.on('error', (error) => resolve(spawnFailure(error)));
+    child.on('close', (status) => resolve(outcome(status, stdout, stderr)));
+  });
 }
