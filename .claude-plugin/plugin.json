@@ -1,7 +1,7 @@
 {
   "name": "work-from-everywhere",
   "description": "Tracked tasks with proof: /work-from-everywhere logs each task in a Google Sheet, captures device screenshots and video, and files them in Google Drive. Includes the gws Google Workspace skills.",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "author": {
     "name": "purple-cheddar"
   }

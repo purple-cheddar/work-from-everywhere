@@ -10,6 +10,8 @@ allowed-tools:
 
 Run each command with the Bash tool, on its own and with the quoting shown.
 
+If Claude Code refuses a command before it runs (a permission denial, or auto mode saying it can't determine its safety or that its classifier gave no verdict), retry once at most. Then stop, show the user the command, and offer these options: switch out of auto mode (Shift+Tab in the CLI, or the mode selector in the desktop app) and approve it; update Claude Code (`claude update`) and start a new session when the message mentions no verdict; or run it themselves (in the CLI, type `!` followed by it) and share the output.
+
 ## 1. Check this machine
 
 ```bash

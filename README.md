@@ -146,6 +146,14 @@ Uninstalling the plugin deletes this folder.
 | `scripts/lib/gws.mjs` | Runs `gws` without a shell, so JSON arguments arrive intact |
 | `hooks/hooks.json` | Registers both hooks |
 
+## Troubleshooting
+
+| What you see | Why | Fix |
+|---|---|---|
+| Every command is refused with "The server-side auto mode classifier gave no verdict" | Auto mode's safety check didn't answer, so Claude Code refuses anything it would review, including plain `ls`. Claude Code versions before 2.1.280 refuse every such action right away | Update Claude Code (`claude update`) and start a new session. Or switch out of auto mode (Shift+Tab in the CLI, or the mode selector in the desktop app) and approve commands yourself. From 2.1.281, starting Claude Code with `CLAUDE_CODE_AUTO_MODE_SERVER=0` also works |
+| "The Google sign-in has expired or is missing" | Many company accounts must sign in again every 16 hours | `gws auth login -s drive,sheets` |
+| The first run says setup is needed after an update or reinstall | Each installed copy keeps its own data folder | Let the setup run once. It remembers the machine afterwards |
+
 ## Maintaining
 
 - **Releasing:** bump `version` in `.claude-plugin/plugin.json`, because installed copies stay on their version until it changes. Before pushing, validate both manifests: `claude plugin validate --strict .claude-plugin/plugin.json` and `claude plugin validate --strict .` (the marketplace). Run `claude plugin tag` if you want a release tag.

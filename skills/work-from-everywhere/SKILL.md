@@ -96,6 +96,12 @@ When the work is finished and you've checked that it works:
 ## Rules
 
 - The user approved these Google Workspace writes for this workflow: finding or creating the Agent Tasks folder, the Ai Tasks spreadsheet and the module tab; creating task folders and uploading proof; sharing each task folder as "Anyone with the link"; and updating the task's row. Don't ask before these, even though the gws skills say to confirm every write. Never delete Drive files or sheet rows.
+- If Claude Code refuses to run a command or skill before it starts (a permission denial, or auto mode saying it can't determine the action's safety or that its classifier gave no verdict), retry it once at most. If it's refused again, stop and tell the user which step didn't run and the exact command, with their options:
+  1. Switch out of auto mode (Shift+Tab in the CLI, or the mode selector in the desktop app) and approve the command.
+  2. If the message says the classifier gave no verdict, update Claude Code (`claude update` for the CLI) and start a new session. Versions before 2.1.280 deny every action when this happens.
+  3. Run the command themselves (in the CLI, type `!` followed by it) and continue from its output.
+
+  Don't try to get around the refusal with other commands.
 - If a tracker or context command returns `"code": "auth"`, the Google sign-in expired partway through the task. Ask the user to run `gws auth login -s drive,sheets` in a terminal, wait until they say it's done, then run the same command again.
 - If you lose track of the task number, for example after the conversation is compacted, list this session's tasks:
 
