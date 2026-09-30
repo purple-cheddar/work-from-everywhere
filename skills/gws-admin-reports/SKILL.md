@@ -9,6 +9,7 @@ metadata:
       bins:
         - gws
     cliHelp: "gws admin-reports --help"
+user-invocable: false
 ---
 
 # admin-reports (reports_v1)

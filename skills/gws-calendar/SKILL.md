@@ -9,6 +9,7 @@ metadata:
       bins:
         - gws
     cliHelp: "gws calendar --help"
+user-invocable: false
 ---
 
 # calendar (v3)

@@ -1,6 +1,7 @@
 ---
 name: task-done
-description: Deliver a finished /work-from-everywhere task. Uploads its proof to the "Agent Tasks" Google Drive folder, shares it as "Anyone with the link", and marks the task Complete in the "Ai Tasks" sheet with the proof link. Use after task-proof.
+description: Deliver a finished /work-from-everywhere task. Uploads its proof to the "Agent Tasks" Google Drive folder, shares it as "Anyone with the link", and marks the task Complete in the "Ai Tasks" sheet with the proof link. Use after task-proof, and when the user asks to deliver a tracked task or upload its proof again.
+user-invocable: false
 allowed-tools:
   - Bash(node "${CLAUDE_PLUGIN_ROOT}/scripts/tracker.mjs" *)
 ---

@@ -9,6 +9,7 @@ metadata:
       bins:
         - gws
     cliHelp: "gws calendar +insert --help"
+user-invocable: false
 ---
 
 # calendar +insert

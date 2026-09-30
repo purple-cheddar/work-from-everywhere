@@ -9,6 +9,7 @@ metadata:
       bins:
         - gws
     cliHelp: "gws meet --help"
+user-invocable: false
 ---
 
 # meet (v2)

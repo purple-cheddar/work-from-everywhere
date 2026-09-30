@@ -9,6 +9,7 @@ metadata:
       bins:
         - gws
     cliHelp: "gws tasks --help"
+user-invocable: false
 ---
 
 # tasks (v1)

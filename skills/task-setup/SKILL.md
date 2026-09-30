@@ -1,6 +1,7 @@
 ---
 name: task-setup
-description: Check and set up everything the work-from-everywhere plugin needs on this machine (Node.js, the gws CLI and its Google sign-in, Playwright and its browsers), walking the user through each missing piece, then save the project's module name and app URL. Use on the first /work-from-everywhere run on a machine, when its setup check fails, or when the user asks to set up the plugin or change the project config.
+description: Check and set up everything the work-from-everywhere plugin needs on this machine (Node.js, the gws CLI and its Google sign-in, Playwright and its browsers), walking the user through each missing piece, then save the project's module name and app URL. Use on the first /work-from-everywhere run on a machine, when its setup check fails, or when the user asks to set up or recheck the plugin, or to change the project's module name or app URL.
+user-invocable: false
 allowed-tools:
   - Bash(node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs" *)
   - Bash(node "${CLAUDE_PLUGIN_ROOT}/scripts/tracker.mjs" *)

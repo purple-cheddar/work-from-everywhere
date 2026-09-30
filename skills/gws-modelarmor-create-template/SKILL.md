@@ -9,6 +9,7 @@ metadata:
       bins:
         - gws
     cliHelp: "gws modelarmor +create-template --help"
+user-invocable: false
 ---
 
 # modelarmor +create-template

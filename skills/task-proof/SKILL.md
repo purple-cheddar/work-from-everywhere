@@ -1,6 +1,7 @@
 ---
 name: task-proof
-description: Capture proof that a /work-from-everywhere task works. For UI changes, full-page screenshots at seven device sizes plus one desktop video; for other tasks, test or command output saved as text and images. Use when a tracked task is finished, before task-done.
+description: Capture proof that a /work-from-everywhere task works. For UI changes, full-page screenshots at seven device sizes plus one desktop video; for other tasks, test or command output saved as text and images. Use when a tracked task is finished, before task-done, and when the user asks to capture or retake a task's proof.
+user-invocable: false
 allowed-tools:
   - Bash(node "${CLAUDE_PLUGIN_ROOT}/scripts/capture.mjs" check *)
   - Bash(node "${CLAUDE_PLUGIN_ROOT}/scripts/capture.mjs" shots *)

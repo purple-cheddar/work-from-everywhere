@@ -9,6 +9,7 @@ metadata:
       bins:
         - gws
     cliHelp: "gws workflow +file-announce --help"
+user-invocable: false
 ---
 
 # workflow +file-announce

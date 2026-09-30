@@ -9,6 +9,7 @@ metadata:
       bins:
         - gws
     cliHelp: "gws workflow +standup-report --help"
+user-invocable: false
 ---
 
 # workflow +standup-report

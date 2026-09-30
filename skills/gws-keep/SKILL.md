@@ -9,6 +9,7 @@ metadata:
       bins:
         - gws
     cliHelp: "gws keep --help"
+user-invocable: false
 ---
 
 # keep (v1)

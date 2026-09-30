@@ -9,6 +9,7 @@ metadata:
       bins:
         - gws
     cliHelp: "gws drive --help"
+user-invocable: false
 ---
 
 # drive (v3)

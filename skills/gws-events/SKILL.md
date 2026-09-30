@@ -9,6 +9,7 @@ metadata:
       bins:
         - gws
     cliHelp: "gws events --help"
+user-invocable: false
 ---
 
 # events (v1)

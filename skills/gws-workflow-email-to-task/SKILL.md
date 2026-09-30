@@ -9,6 +9,7 @@ metadata:
       bins:
         - gws
     cliHelp: "gws workflow +email-to-task --help"
+user-invocable: false
 ---
 
 # workflow +email-to-task

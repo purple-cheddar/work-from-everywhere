@@ -9,6 +9,7 @@ metadata:
       bins:
         - gws
     cliHelp: "gws slides --help"
+user-invocable: false
 ---
 
 # slides (v1)

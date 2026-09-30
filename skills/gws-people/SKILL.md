@@ -9,6 +9,7 @@ metadata:
       bins:
         - gws
     cliHelp: "gws people --help"
+user-invocable: false
 ---
 
 # people (v1)

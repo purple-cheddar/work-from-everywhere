@@ -9,6 +9,7 @@ metadata:
       bins:
         - gws
     cliHelp: "gws chat --help"
+user-invocable: false
 ---
 
 # chat (v1)

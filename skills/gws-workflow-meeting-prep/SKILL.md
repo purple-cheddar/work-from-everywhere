@@ -9,6 +9,7 @@ metadata:
       bins:
         - gws
     cliHelp: "gws workflow +meeting-prep --help"
+user-invocable: false
 ---
 
 # workflow +meeting-prep

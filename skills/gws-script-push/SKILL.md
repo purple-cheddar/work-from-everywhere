@@ -9,6 +9,7 @@ metadata:
       bins:
         - gws
     cliHelp: "gws script +push --help"
+user-invocable: false
 ---
 
 # script +push

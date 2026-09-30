@@ -9,6 +9,7 @@ metadata:
       bins:
         - gws
     cliHelp: "gws sheets +read --help"
+user-invocable: false
 ---
 
 # sheets +read

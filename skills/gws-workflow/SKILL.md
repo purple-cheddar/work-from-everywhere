@@ -9,6 +9,7 @@ metadata:
       bins:
         - gws
     cliHelp: "gws workflow --help"
+user-invocable: false
 ---
 
 # workflow (v1)

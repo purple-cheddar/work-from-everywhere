@@ -9,6 +9,7 @@ metadata:
       bins:
         - gws
     cliHelp: "gws gmail +triage --help"
+user-invocable: false
 ---
 
 # gmail +triage

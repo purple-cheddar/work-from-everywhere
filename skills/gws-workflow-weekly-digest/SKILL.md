@@ -9,6 +9,7 @@ metadata:
       bins:
         - gws
     cliHelp: "gws workflow +weekly-digest --help"
+user-invocable: false
 ---
 
 # workflow +weekly-digest

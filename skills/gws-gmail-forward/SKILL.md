@@ -9,6 +9,7 @@ metadata:
       bins:
         - gws
     cliHelp: "gws gmail +forward --help"
+user-invocable: false
 ---
 
 # gmail +forward

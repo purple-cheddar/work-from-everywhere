@@ -9,6 +9,7 @@ metadata:
       bins:
         - gws
     cliHelp: "gws drive +upload --help"
+user-invocable: false
 ---
 
 # drive +upload

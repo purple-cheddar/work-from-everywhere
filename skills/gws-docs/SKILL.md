@@ -9,6 +9,7 @@ metadata:
       bins:
         - gws
     cliHelp: "gws docs --help"
+user-invocable: false
 ---
 
 # docs (v1)

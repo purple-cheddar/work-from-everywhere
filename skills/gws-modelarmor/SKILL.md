@@ -9,6 +9,7 @@ metadata:
       bins:
         - gws
     cliHelp: "gws modelarmor --help"
+user-invocable: false
 ---
 
 # modelarmor (v1)

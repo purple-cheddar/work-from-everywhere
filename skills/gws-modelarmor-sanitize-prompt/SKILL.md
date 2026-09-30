@@ -9,6 +9,7 @@ metadata:
       bins:
         - gws
     cliHelp: "gws modelarmor +sanitize-prompt --help"
+user-invocable: false
 ---
 
 # modelarmor +sanitize-prompt

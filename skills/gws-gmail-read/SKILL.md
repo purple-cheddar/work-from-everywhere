@@ -9,6 +9,7 @@ metadata:
       bins:
         - gws
     cliHelp: "gws gmail +read --help"
+user-invocable: false
 ---
 
 # gmail +read

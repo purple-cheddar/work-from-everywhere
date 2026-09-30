@@ -9,6 +9,7 @@ metadata:
       bins:
         - gws
     cliHelp: "gws events +renew --help"
+user-invocable: false
 ---
 
 # events +renew

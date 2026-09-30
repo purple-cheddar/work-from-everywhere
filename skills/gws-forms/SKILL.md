@@ -9,6 +9,7 @@ metadata:
       bins:
         - gws
     cliHelp: "gws forms --help"
+user-invocable: false
 ---
 
 # forms (v1)

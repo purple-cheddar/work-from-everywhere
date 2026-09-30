@@ -1,7 +1,7 @@
 ---
 name: task-status
-description: Change a tracked task's status in the "Ai Tasks" Google Sheet to To Do, In Progress, Pending or Blocked, with a remark. Use during a /work-from-everywhere task when you start it, need the user (Pending), or can't continue (Blocked).
-argument-hint: <To Do|In Progress|Pending|Blocked> [remark]
+description: Change a tracked task's status in the "Ai Tasks" Google Sheet to To Do, In Progress, Pending or Blocked, with a remark. Use during a /work-from-everywhere task when you start it, need the user (Pending), or can't continue (Blocked), and when the user asks to change a tracked task's status or add a remark.
+user-invocable: false
 allowed-tools:
   - Bash(node "${CLAUDE_PLUGIN_ROOT}/scripts/tracker.mjs" *)
 ---

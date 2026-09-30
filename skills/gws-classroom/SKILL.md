@@ -9,6 +9,7 @@ metadata:
       bins:
         - gws
     cliHelp: "gws classroom --help"
+user-invocable: false
 ---
 
 # classroom (v1)

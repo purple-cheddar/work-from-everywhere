@@ -9,6 +9,7 @@ metadata:
       bins:
         - gws
     cliHelp: "gws sheets +append --help"
+user-invocable: false
 ---
 
 # sheets +append

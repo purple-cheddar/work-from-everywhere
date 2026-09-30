@@ -8,6 +8,7 @@ metadata:
     requires:
       bins:
         - gws
+user-invocable: false
 ---
 
 # gws — Shared Reference
