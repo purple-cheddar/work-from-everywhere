@@ -15,11 +15,16 @@
 //     "baseUrl": "http://localhost:3000",
 //     "login": [ steps ],                                        optional, runs before every capture
 //     "pages": [ { "name": "Cart", "path": "/cart", "steps": [ steps ] } ],
-//     "video": { "name": "Apply a coupon", "steps": [ steps ] },  optional, recorded at 1280x720
+//     "video": { "name": "Apply a coupon", "path": "/cart" | "steps": [ steps ], "mobileSteps": [ steps ] },  optional
 //     "devices": [ "iPhone SE", ... ]                            optional, replaces the defaults
 //   }
 // A step is an object with one key: goto, click, fill [selector, value], press [selector, key] or a
-// key, hover, select [selector, value], check, waitFor, wait (ms), scroll (pixels).
+// key, hover, select [selector, value], check, waitFor, wait (ms), scroll (pixels), tour.
+//
+// The video is recorded twice, on a desktop and on a phone. A "tour" step scrolls smoothly from the
+// top of the page to the bottom and back, so the whole page is seen; put one on each page the task
+// is about, and none on pages the video only passes through. "path" alone is short for going to that
+// page and touring it. "mobileSteps" replace "steps" on the phone, for example to open a menu first.
 
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -40,7 +45,13 @@ const DEFAULT_DEVICES = [
   { name: 'Laptop', viewport: { width: 1366, height: 768 } },
   { name: 'Desktop', viewport: { width: 1920, height: 1080 } },
 ];
-const VIDEO_SIZE = { width: 1280, height: 720 };
+const VIDEOS = [
+  { name: 'Desktop', viewport: { width: 1280, height: 720 } },
+  // Chromium, like the desktop video, because setup checks video recording in Chromium.
+  { name: 'Mobile', device: 'Pixel 7' },
+];
+const TOUR_SPEED = 700; // pixels a second; longer pages scroll faster so a tour stays under TOUR_MAX
+const TOUR_MAX = 20000;
 const MAX_LOG_LINES = 400;
 
 function playwright(data) {
@@ -82,13 +93,14 @@ async function shots(ctx, opts) {
     : JSON.parse(fs.readFileSync(required(opts, 'spec'), 'utf8'));
   if (!spec.out) throw new Error('The spec needs "out", the proof folder');
   if (!spec.pages?.length && !spec.video) throw new Error('The spec needs "pages", "video" or both');
+  if (spec.video && !spec.video.steps?.length && !spec.video.path) throw new Error('The video needs "steps" or the "path" of the page the task is about');
   const out = path.resolve(spec.out);
   fs.mkdirSync(out, { recursive: true });
   fs.writeFileSync(path.join(out, '_spec.json'), JSON.stringify(spec, null, 2));
 
   const pw = playwright(ctx.data);
   const devices = (spec.devices || DEFAULT_DEVICES).map((d, i) => device(pw, d, i));
-  const result = { ok: true, out, screenshots: [], video: null, errors: [] };
+  const result = { ok: true, out, screenshots: [], videos: [], errors: [] };
 
   if (spec.pages?.length) {
     const dir = path.join(out, 'Screenshots');
@@ -131,20 +143,24 @@ async function shots(ctx, opts) {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wfe-video-'));
     const browser = await pw.chromium.launch();
     try {
-      const context = await browser.newContext({ viewport: VIDEO_SIZE, recordVideo: { dir: tmp, size: VIDEO_SIZE } });
-      context.setDefaultTimeout(15000);
-      const page = await context.newPage();
-      try {
-        await run(page, spec.login, spec.baseUrl);
-        await run(page, spec.video.steps || [], spec.baseUrl);
-        await page.waitForTimeout(1000);
-      } catch (e) {
-        result.errors.push(`Video: ${firstLine(e)}`);
+      for (const v of VIDEOS) {
+        const options = v.device ? device(pw, v.device, 0).options : { viewport: v.viewport };
+        const steps = (v.name === 'Mobile' && spec.video.mobileSteps) || spec.video.steps || [{ goto: spec.video.path }, { tour: true }];
+        const context = await browser.newContext({ ...options, recordVideo: { dir: tmp, size: options.viewport } });
+        context.setDefaultTimeout(15000);
+        const page = await context.newPage();
+        try {
+          await run(page, spec.login, spec.baseUrl);
+          await run(page, steps, spec.baseUrl);
+          await page.waitForTimeout(1000);
+        } catch (e) {
+          result.errors.push(`${v.name} video: ${firstLine(e)}`);
+        }
+        await context.close();
+        const file = path.join(dir, `${safe(spec.video.name || 'Walkthrough')} - ${v.name}.webm`);
+        await page.video().saveAs(file);
+        result.videos.push(path.relative(out, file));
       }
-      await context.close();
-      const file = path.join(dir, `${safe(spec.video.name || 'Walkthrough')}.webm`);
-      await page.video().saveAs(file);
-      result.video = path.relative(out, file);
     } finally {
       await browser.close();
       fs.rmSync(tmp, { recursive: true, force: true });
@@ -211,9 +227,44 @@ async function run(page, steps = [], baseUrl) {
       case 'waitFor': await page.waitForSelector(a); break;
       case 'wait': await page.waitForTimeout(Number(a)); break;
       case 'scroll': await page.mouse.wheel(0, Number(a)); break;
+      case 'tour': await tour(page); break;
       default: throw new Error(`Unknown step ${JSON.stringify(step)}`);
     }
   }
+}
+
+// Scrolls smoothly to the bottom of the page and back to the top, pausing at each end. A page that
+// scrolls inside a container instead of the window has that container scrolled.
+async function tour(page) {
+  await settle(page);
+  await page.waitForTimeout(800);
+  await page.evaluate(async ({ speed, max }) => {
+    const root = document.scrollingElement;
+    const scrollable = (el) => el.scrollHeight - el.clientHeight > 50
+      && (el === root || (/(auto|scroll)/.test(getComputedStyle(el).overflowY) && el.clientHeight > innerHeight / 3));
+    const el = [root, ...document.querySelectorAll('body *')].filter((x) => x && scrollable(x))
+      .sort((a, b) => b.clientHeight * b.scrollHeight - a.clientHeight * a.scrollHeight)[0];
+    if (!el) return;
+    const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+    const glide = (to, ms) => new Promise((done) => {
+      const from = el.scrollTop;
+      const start = performance.now();
+      const frame = (now) => {
+        const t = Math.min(1, (now - start) / ms);
+        const eased = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
+        el.scrollTop = from + (to() - from) * eased;
+        if (t < 1) requestAnimationFrame(frame); else done();
+      };
+      requestAnimationFrame(frame);
+    });
+    // Lazy-loaded content can grow the page mid-scroll, so the bottom is re-read every frame.
+    const bottom = () => el.scrollHeight - el.clientHeight;
+    const down = Math.min(max, Math.max(1500, (bottom() / speed) * 1000));
+    await glide(bottom, down);
+    await pause(1200);
+    await glide(() => 0, Math.min(4000, down / 2));
+    await pause(600);
+  }, { speed: TOUR_SPEED, max: TOUR_MAX });
 }
 
 async function settle(page) {

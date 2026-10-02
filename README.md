@@ -5,7 +5,7 @@ A Claude Code plugin for tracked tasks with proof. Run `/work-from-everywhere <t
 1. gets the task's context. If the task includes a Google Drive link, Claude reads it; if it has no link, Claude asks whether you have context: choose **No context**, or give a Google Drive link (a Doc, Sheet, Slides file, PDF or folder) and Claude reads it through `gws`,
 2. logs the task as a row in the **Ai Tasks** Google Sheet, in a tab named after the project's module, with the context link as its Context Source,
 3. does the work, keeping the row's Status up to date (In Progress, Pending, Blocked),
-4. captures proof: full-page screenshots at seven device sizes plus one video for UI changes, or test and command output for everything else,
+4. captures proof: full-page screenshots at seven device sizes plus a desktop and a mobile video that scroll through the page the task is about, for UI changes, or test and command output for everything else,
 5. uploads the proof to **Agent Tasks / &lt;module&gt; / &lt;NNN&gt; - &lt;title&gt;** in Google Drive, shares that folder as "Anyone with the link", and marks the row Complete with the link.
 
 It also bundles the 44 [`gws`](https://github.com/googleworkspace/cli) Google Workspace skills.
