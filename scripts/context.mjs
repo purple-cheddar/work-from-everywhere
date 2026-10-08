@@ -51,7 +51,7 @@ function check(r) {
   if (r.missing) throw new FetchError('gws is not installed. Run the task-setup skill.', 'setup');
   if (r.status === 2) {
     throw new FetchError('The Google sign-in has expired or is missing (many company accounts must sign in again every 16 hours). '
-      + 'Ask the user to run `gws auth login -s drive,sheets` in a terminal, then run this command again.', 'auth');
+      + 'Sign the user in again as the "Google sign-in" section of the work-from-everywhere skill describes, then run this command again.', 'auth');
   }
   if (r.status !== 0 || r.json?.error) {
     const error = r.json?.error || {};

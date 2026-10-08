@@ -3,12 +3,27 @@
 A Claude Code plugin for tracked tasks with proof. Run `/work-from-everywhere <task>` and Claude:
 
 1. gets the task's context. If the task includes a Google Drive link, Claude reads it; if it has no link, Claude asks whether you have context: choose **No context**, or give a Google Drive link (a Doc, Sheet, Slides file, PDF or folder) and Claude reads it through `gws`,
-2. logs the task as a row in the **Ai Tasks** Google Sheet, in a tab named after the project's module, with the context link as its Context Source,
-3. does the work, keeping the row's Status up to date (In Progress, Pending, Blocked),
-4. captures proof: full-page screenshots at seven device sizes plus a desktop and a mobile video that scroll through the page the task is about, for UI changes, or test and command output for everything else,
-5. uploads the proof to **Agent Tasks / &lt;module&gt; / &lt;NNN&gt; - &lt;title&gt;** in Google Drive, shares that folder as "Anyone with the link", and marks the row Complete with the link.
+2. logs the task as a row in the **Ai Tasks** Google Sheet, in a tab named after the project's module, with the context link as its Context Source, and switches the project's git repository to a branch for the task,
+3. does the work, keeping the row's Status up to date (In Progress, Pending, Blocked), and sends a push notification to your phone when it needs you,
+4. captures proof: full-page screenshots at seven device sizes plus a desktop and a mobile MP4 video that scroll through the page the task is about, for UI changes, or test and command output for everything else,
+5. commits the work, pushes the branch and opens a GitHub pull request, ready for review,
+6. uploads the proof to **Agent Tasks / &lt;module&gt; / &lt;NNN&gt; - &lt;title&gt;** in Google Drive, shares that folder as "Anyone with the link", marks the row Complete with the proof and pull request links, and tells your phone it's done.
 
 It also bundles the 44 [`gws`](https://github.com/googleworkspace/cli) Google Workspace skills.
+
+## Working from your phone
+
+Leave this computer on with a Claude Code session open, and connect to it from the Claude app on your phone with Remote Control. Then:
+
+| You want to | On your phone |
+|---|---|
+| Start a task | Send `/work-from-everywhere <task>` in the session |
+| Know when Claude needs you | A push notification arrives when a task goes Pending or Blocked, needs a Google sign-in, or is delivered |
+| Renew the Google sign-in | Tap the link Claude sends and approve. The page you land on won't load, because it points at the computer (`localhost`); copy its address and paste it to Claude |
+| Review the work | Open the pull request in the GitHub app, with the proof link in its description, and the MP4 videos in Google Drive |
+| Ship it | Merge the pull request in the GitHub app. Claude never merges |
+
+Push notifications only reach your phone while Remote Control is connected.
 
 ## Install
 
@@ -39,17 +54,16 @@ The first `/work-from-everywhere` on a machine checks everything the plugin need
 | Node.js | Version 18 or later, which runs the plugin's scripts | You install it from https://nodejs.org |
 | Git Bash | Windows only: Git for Windows | You install it from https://git-scm.com/download/win |
 | gws | The Google Workspace CLI | Claude installs it with npm, after asking |
-| Google sign-in | An OAuth client (`client_secret.json`) and a `gws auth login` with Drive and Sheets access | You. Claude guides you through [google-sign-in.md](skills/task-setup/google-sign-in.md) |
+| Google sign-in | An OAuth client (`client_secret.json`) and a sign-in with Drive and Sheets access | You set up the OAuth client once, with [google-sign-in.md](skills/task-setup/google-sign-in.md). Claude handles each sign-in, which you approve in a browser, on the computer or your phone |
 | Playwright | `playwright-core` 1.62.1, about 13 MB | Claude installs it into the plugin's data folder, after asking |
 | Browsers | Chromium, WebKit and the ffmpeg video encoder | Claude downloads them after asking, unless they're already on the machine |
+| MP4 encoder | `ffmpeg-static` 5.3.0, an ffmpeg build of about 80 MB that turns the WebM recordings into MP4, which iPhones play | Claude installs it into the plugin's data folder, after asking |
 
 Once everything passes, the machine is recorded as set up (`setup.json` in the plugin's data folder), and later runs skip these checks.
 
-**The Google sign-in is still checked on every run.** Many company Google accounts must sign in again every 16 hours. When yours has expired, Claude asks you to run this in a terminal before it starts the task:
+Pull requests also need the [GitHub CLI](https://cli.github.com) signed in (`gh auth login`). Without it, Claude still pushes the task branch and tells you why no pull request was opened.
 
-```bash
-gws auth login -s drive,sheets
-```
+**The Google sign-in is still checked on every run.** Many company Google accounts must sign in again every 16 hours. When yours has expired, Claude sends you a sign-in link. Approve it on the computer, or on your phone, then paste back the address of the page that fails to load. You can also sign in yourself from a terminal on the computer with `gws auth login -s drive,sheets`.
 
 To recheck everything at any time, ask Claude to "recheck the work-from-everywhere setup".
 
@@ -68,15 +82,16 @@ The plugin's other skills are hidden from the `/` menu with `user-invocable: fal
 | `task-setup` | Checks and sets up the machine, and writes the project config | "Recheck the plugin setup", "Change this project's module to Checkout" |
 | `task-status` | Sets To Do, In Progress, Pending or Blocked, with a remark | "Mark task 3 as blocked: the API key expired" |
 | `task-proof` | Captures screenshots, video or logs | "Retake the proof for task 3" |
-| `task-done` | Uploads the proof, shares it and marks the task Complete | "Upload task 3's proof again" |
+| `task-done` | Commits the work, pushes the branch and opens a pull request, then uploads the proof, shares it and marks the task Complete | "Open the pull request for task 3", "Upload task 3's proof again" |
 | `gws-*` | The 44 Google Workspace skills (Gmail, Calendar, Drive, Docs, Sheets, Chat, Tasks, …) | "Summarize my unread email", "What's on my calendar today?" |
 
 ## The Ai Tasks sheet
 
-Each module has its own tab with these columns: Task No, Description, Status, Context Source, Assign datetime, Complete Datetime, Proof Link, Remark, Session.
+Each module has its own tab with these columns: Task No, Description, Status, Context Source, Assign datetime, Complete Datetime, Proof Link, PR Link, Remark, Session.
 
 - Each column has its own header color and a lighter tint below it, and the header row stays frozen.
 - Status is a dropdown with a color per value.
+- A tab made by an earlier version of the plugin gets the PR Link column added, with the existing rows moved along, the next time Claude updates one of its tasks.
 - Remarks build up as timestamped lines, so a task's history stays visible.
 - Session is the Claude Code session ID. `claude --resume <id>` reopens that conversation.
 - Times use the computer's timezone.
@@ -98,12 +113,14 @@ Tracking needs `.claude/work-from-everywhere.json` in the project. The first `/w
   "module": "Checkout",
   "baseUrl": "http://localhost:3000",
   "startCommand": "npm run dev",
-  "login": []
+  "login": [],
+  "pullRequests": true
 }
 ```
 
 - `module` (required) names the Drive folder and the sheet tab.
 - `baseUrl` and `startCommand` say where the app runs, for UI screenshots.
+- `pullRequests` (optional, default `true`): each task gets a `task/<module>-<NNN>-<title>` branch, made from the branch you were on, and delivering it opens a pull request against that branch. If the repository has uncommitted changes when a task starts, Claude asks whether to bring them into the task's branch or do the task without one. Set it to `false` to work on the current branch with no pull requests.
 - `login` (optional) holds sign-in steps for the app. `${ENV_VAR}` in a step value is read from the environment.
 
 ## Hooks
@@ -124,7 +141,8 @@ The plugin's data folder (`~/.claude/plugins/data/<plugin id>/`) holds:
 - `sessions/<session id>.json`: the tasks each session is tracking, which the Stop hook reads
 - `context/<file id>/`: readable copies of each context document Claude was given
 - `proof/<module>/<task no>/`: the local copy of each task's proof
-- `node_modules/`: Playwright
+- `signin/`: the Google sign-in that is waiting for approval, and its log
+- `node_modules/`: Playwright and the MP4 encoder (`ffmpeg-static`)
 
 Uninstalling the plugin deletes this folder.
 
@@ -139,13 +157,15 @@ Uninstalling the plugin deletes this folder.
 | `skills/gws-*` | 44 Google Workspace skills generated by `gws generate-skills` from gws v0.22.5 ([googleworkspace/cli](https://github.com/googleworkspace/cli), Apache License 2.0). The upstream persona and recipe skills are left out, and these are hidden from the `/` menu |
 | `scripts/refresh-gws-skills.mjs` | Maintainer tool: regenerates the `gws-*` skills and hides them from the `/` menu |
 | `scripts/setup.mjs` | The setup check and the per-run sign-in check |
-| `scripts/tracker.mjs` | Drive and Sheets work, through `gws` |
+| `scripts/tracker.mjs` | Drive and Sheets work, through `gws`, plus the task branch and pull request, through `git` and `gh` |
+| `scripts/signin.mjs` | The Google sign-in that works from a phone: starts `gws auth login` in the background and hands it the address the phone pastes back |
 | `scripts/context.mjs` | Reads a task's context from a Google Drive link: Docs as Markdown, Sheets as CSV per tab, Slides as text, other files as they are, and up to 25 files from a folder |
 | `scripts/lib/drive-links.mjs` | Pulls the file or folder ID out of any Google Drive, Docs, Sheets or Slides link |
-| `scripts/capture.mjs` | Screenshots, video and log images, through Playwright |
+| `scripts/capture.mjs` | Screenshots, video and log images, through Playwright, with videos converted to MP4 |
 | `scripts/stop-guard.mjs` | The Stop hook |
 | `scripts/block-gws-in-powershell.js` | The PowerShell hook |
 | `scripts/lib/gws.mjs` | Runs `gws` without a shell, so JSON arguments arrive intact |
+| `scripts/lib/git.mjs` | Runs `git` and `gh` without a shell, for task branches and pull requests |
 | `hooks/hooks.json` | Registers both hooks |
 
 ## Troubleshooting
@@ -153,7 +173,11 @@ Uninstalling the plugin deletes this folder.
 | What you see | Why | Fix |
 |---|---|---|
 | Every command is refused with "The server-side auto mode classifier gave no verdict" | Auto mode's safety check didn't answer, so Claude Code refuses anything it would review, including plain `ls`. Claude Code versions before 2.1.280 refuse every such action right away | Update Claude Code (`claude update`) and start a new session. Or switch out of auto mode (Shift+Tab in the CLI, or the mode selector in the desktop app) and approve commands yourself. From 2.1.281, starting Claude Code with `CLAUDE_CODE_AUTO_MODE_SERVER=0` also works |
-| "The Google sign-in has expired or is missing" | Many company accounts must sign in again every 16 hours | `gws auth login -s drive,sheets` |
+| "The Google sign-in has expired or is missing" | Many company accounts must sign in again every 16 hours | Approve the sign-in link Claude sends. On a phone, paste back the address of the page that fails to load. Or run `gws auth login -s drive,sheets` on the computer |
+| The pasted sign-in address is refused as "from an earlier sign-in" | A newer sign-in replaced it | Use the newest link Claude sent |
+| The task was delivered without a pull request | The reason is in Claude's message: no `origin` remote, a remote that isn't GitHub, or `gh` missing or signed out | Fix the reason (for example `gh auth login`), then ask Claude to "open the pull request for task N" |
+| Videos are `.webm` and won't play on an iPhone | The MP4 encoder isn't installed | Ask Claude to "recheck the work-from-everywhere setup", then "retake the proof for task N" |
+| No push notification arrives | Notifications reach the phone only while Remote Control is connected, and Claude skips them when you're already looking at the session | Connect the session with Remote Control from the Claude app |
 | The first run says setup is needed after an update or reinstall | Each installed copy keeps its own data folder | Let the setup run once. It remembers the machine afterwards |
 
 ## Maintaining

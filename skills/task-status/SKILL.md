@@ -28,4 +28,5 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/tracker.mjs" status --data "${CLAUDE_PLUGIN_
 - Leave out `--remark` when there's nothing to add, for example when going back to In Progress. Each remark is added to the Remark cell on a new timestamped line, and earlier remarks stay.
 - This updates the session's current task. For a different task, add `--module '<module>' --task <number>`.
 - Write a single quote inside a value as `'\''`. Don't start a value with `/`, because Git Bash turns it into a Windows path.
-- If the output has `"code": "auth"`, the Google sign-in expired. Ask the user to run `gws auth login -s drive,sheets` in a terminal, then run the command again.
+- If the output has `"code": "auth"`, the Google sign-in expired. Sign the user in as the "Google sign-in" section of the work-from-everywhere skill describes, then run the command again.
+- After setting Pending or Blocked during a task, send the user a push notification as the work-from-everywhere skill describes under "Notify the user's phone".

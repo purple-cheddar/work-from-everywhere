@@ -1,6 +1,6 @@
 ---
 name: work-from-everywhere
-description: Run a task end to end with tracking. Logs it in the "Ai Tasks" Google Sheet, does the work, captures screenshot and video proof, files the proof in the "Agent Tasks" Google Drive folder, and marks the task Complete. Use when the user runs /work-from-everywhere followed by a task.
+description: Run a task end to end with tracking. Logs it in the "Ai Tasks" Google Sheet, does the work on its own git branch, captures screenshot and video proof, opens a GitHub pull request, files the proof in the "Agent Tasks" Google Drive folder, and marks the task Complete. Use when the user runs /work-from-everywhere followed by a task.
 argument-hint: <task to do>
 disable-model-invocation: true
 shell: bash
@@ -8,6 +8,7 @@ allowed-tools:
   - Bash(node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs" *)
   - Bash(node "${CLAUDE_PLUGIN_ROOT}/scripts/tracker.mjs" *)
   - Bash(node "${CLAUDE_PLUGIN_ROOT}/scripts/context.mjs" *)
+  - Bash(node "${CLAUDE_PLUGIN_ROOT}/scripts/signin.mjs" *)
   - Bash(echo *)
 ---
 
@@ -18,7 +19,8 @@ allowed-tools:
 Do this task while keeping its row in the **Ai Tasks** Google Sheet up to date, then deliver proof. These instructions apply for the whole task, including later turns.
 
 - Session ID: `${CLAUDE_SESSION_ID}`
-- Project config: `${CLAUDE_PROJECT_DIR}/.claude/work-from-everywhere.json`. Read it for `module` and `baseUrl`. If it doesn't exist, run the `task-setup` skill first.
+- Project config: `${CLAUDE_PROJECT_DIR}/.claude/work-from-everywhere.json`. Read it for `module`, `baseUrl` and `pullRequests`. If it doesn't exist, run the `task-setup` skill first.
+- The user may be following along from their phone, through Remote Control or the Claude app. Keep messages short, and put links on their own line so they're easy to tap.
 - Run tracker commands with the **Bash tool**, each on its own and with the quoting shown, so they run without a permission prompt. Put values in single quotes, and write a single quote inside a value as `'\''`. Don't start a value with `/`, because Git Bash turns it into a Windows path: write `Cart page (/cart)`, not `/cart page`. Each command prints JSON: check `ok`, and if it's false show the `error` to the user.
 
 ## 0. Setup check
@@ -29,12 +31,7 @@ This check ran when the user started the task:
 
 - `ok` is true: go on to step 1.
 - `mode` is `setup-needed`, `node-missing` or `error`: run the `task-setup` skill to walk the user through setup, then continue with step 1.
-- The `google-sign-in` check failed: tell the user their Google sign-in has expired or is missing (many company accounts must sign in again every 16 hours). Ask them to run `gws auth login -s drive,sheets` in a terminal and tell you when it's done. Then check again, and continue once `ok` is true:
-
-  ```bash
-  node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs" preflight --data "${CLAUDE_PLUGIN_DATA}"
-  ```
-
+- The `google-sign-in` check failed: the Google sign-in has expired or is missing (many company accounts must sign in again every 16 hours). Sign the user in as described under **Google sign-in** below, then continue with step 1.
 - The `google-connection` check failed: Google couldn't be reached. Tell the user, and ask whether to try again or do the task without tracking.
 - Any other check failed: run the `task-setup` skill.
 
@@ -77,21 +74,75 @@ It saves readable copies (Docs as Markdown, Sheets as one CSV per tab, Slides as
 
    If another task from this session is still In Progress, add `--status 'To Do'` and finish that task first. Then set this one to In Progress with the `task-status` skill and start it.
 4. Tell the user the task number and the `spreadsheetUrl`, in one line.
+5. Give the task its own git branch, so it can be reviewed and merged as a pull request. Skip this when the project config has `"pullRequests": false`.
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/tracker.mjs" branch --data "${CLAUDE_PLUGIN_DATA}" --session "${CLAUDE_SESSION_ID}" --repo "${CLAUDE_PROJECT_DIR}"
+   ```
+
+   - `ok` is true with a `branch`: work on that branch. If `carried` is more than 0, the user's uncommitted changes came along and will be part of the pull request.
+   - `skipped`: the project isn't a git repository, or isn't on a branch. Mention the reason in one line and do the task without a branch.
+   - `code` is `dirty`: the repository has uncommitted changes that aren't from this task. Show the `files`, and ask the user with AskUserQuestion:
+     - **Include them**: run the same command with `--allow-dirty` added. They become part of this task's pull request.
+     - **No branch**: do the task on the current branch, with no pull request.
+
+     Don't commit, stash or discard the user's changes yourself.
 
 ## 3. Do the work
 
 Work on the task as usual. Keep the status honest with the `task-status` skill:
 
-- **Pending**: you need the user to do or answer something before you can continue. Put what you need in the remark, then ask the user. When they reply, set the task back to **In Progress**.
-- **Blocked**: something happened that stops the task. Put what happened in the remark.
+- **Pending**: you need the user to do or answer something before you can continue. Put what you need in the remark, send a push notification (see **Notify the user's phone**), then ask the user. When they reply, set the task back to **In Progress**.
+- **Blocked**: something happened that stops the task. Put what happened in the remark, and send a push notification.
 
 ## 4. Deliver
 
 When the work is finished and you've checked that it works:
 
 1. Run the `task-proof` skill to capture screenshots and video, or logs for a task without a UI.
-2. Run the `task-done` skill to upload the proof, share it and mark the task Complete.
-3. End with a short summary: what changed, the Proof Link and the sheet link.
+2. Run the `task-done` skill. It commits the work, pushes the branch and opens a pull request when the task has a branch, then uploads the proof, shares it and marks the task Complete.
+3. Send a push notification that the task is delivered, with the pull request link when there is one.
+4. End with a short summary: what changed, then the Pull Request link, the Proof Link and the sheet link, each on its own line.
+
+## Google sign-in
+
+Use this whenever the Google sign-in has expired or is missing: when the setup check says so, or when a command returns `"code": "auth"`. It works whether the user is at this computer or on their phone, so don't ask them to run anything in a terminal.
+
+1. Start the sign-in:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/signin.mjs" start --data "${CLAUDE_PLUGIN_DATA}"
+   ```
+
+2. During a task, send a push notification that the Google sign-in expired and the task is waiting for it.
+3. Give the user the `url` from the output on its own line, with these steps:
+   1. Open the link, choose the Google account and approve the access. If Google says it hasn't verified the app, tap **Advanced**, then **Go to** the app.
+   2. **On this computer**, that's all: tell me when it's done.
+   3. **On a phone**, the page you end up on won't load, because it points at this computer (`localhost`). That's expected. Copy the whole address from the address bar and paste it here.
+4. Finish the sign-in. Add `--url` with what the user pasted, or leave it out when they approved on this computer:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/signin.mjs" finish --data "${CLAUDE_PLUGIN_DATA}" --url '<pasted address>'
+   ```
+
+   - `ok` is true: tell the user which `account` is signed in, and carry on with what you were doing. Run the command that failed again.
+   - `code` is `waiting`: the user hasn't approved it yet, or pasted nothing. Ask again.
+   - `code` is `denied`, `failed`, or another error: show the `error`, and start again from step 1. A sign-in link works once, and a new `start` replaces it.
+
+`start` asks for Drive and Sheets access. If the user also uses the plugin's other Google skills (Gmail, Calendar and so on), add `--services 'drive,sheets,gmail,calendar'` with the services they use, so the new sign-in keeps them.
+
+## Notify the user's phone
+
+The user may have walked away, so tell them when a task needs them or is done. Use the PushNotification tool with `status: "proactive"`. If it isn't loaded, load it with ToolSearch (`select:PushNotification`). If the tool doesn't exist, skip notifications.
+
+Send one when a task:
+
+- goes **Pending**: `#<no> <title>: needs you. <the question, short>`
+- goes **Blocked**: `#<no> <title>: blocked. <what happened, short>`
+- waits on the **Google sign-in**: `#<no> <title>: Google sign-in expired. Open the session to sign in.`
+- is **delivered**: `#<no> <title>: done. PR ready to review: <PR link>`, or `Proof: <proof link>` when there's no pull request
+
+Keep each one under 200 characters, on one line, with no markdown. A notification that says it wasn't sent is fine: the user is looking at the session already.
 
 ## Rules
 
@@ -102,7 +153,8 @@ When the work is finished and you've checked that it works:
   3. Run the command themselves (in the CLI, type `!` followed by it) and continue from its output.
 
   Don't try to get around the refusal with other commands.
-- If a tracker or context command returns `"code": "auth"`, the Google sign-in expired partway through the task. Ask the user to run `gws auth login -s drive,sheets` in a terminal, wait until they say it's done, then run the same command again.
+- If a tracker or context command returns `"code": "auth"`, the Google sign-in expired partway through the task. Sign the user in as described under **Google sign-in**, then run the same command again.
+- The user approved these git and GitHub actions for this workflow: creating and switching to the task branch, committing the task's changes to it, pushing it to `origin`, and opening a pull request (ready for review) or editing its description. Don't ask before these. Never merge, force-push, rebase, or push to any other branch.
 - If you lose track of the task number, for example after the conversation is compacted, list this session's tasks:
 
   ```bash

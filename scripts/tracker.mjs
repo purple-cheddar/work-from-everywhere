@@ -8,23 +8,33 @@
 //   start  --module M --title T --description D --context C [--status "To Do"]
 //                                           Add a task row (status defaults to In Progress)
 //   status --status S [--remark R]          Change the status; the remark is appended with a timestamp
+//   branch [--repo DIR] [--allow-dirty]     Switch the project's git repository to a new task branch
+//   pr     [--repo DIR] [--message M] [--summary S]
+//                                           Commit the task's changes, push the branch, open a GitHub
+//                                           pull request and put its link in the sheet
 //   done   --proof-dir DIR [--remark R] [--title T] [--replace]
-//                                           Upload proof, share the folder, mark the task Complete
+//                                           Upload proof, share the folder, mark the task Complete,
+//                                           and add the proof link to the task's pull request
 //   show                                    List the tasks this session has touched
 //
-// status and done act on this session's open task unless --module and --task are given.
+// status, branch, pr and done act on this session's open task unless --module and --task are given.
 // Every command prints one JSON object and exits 0 on success, 1 on failure. When the Google
 // sign-in has expired, the JSON also has "code": "auth".
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { runGws } from './lib/gws.mjs';
+import { branchExists, changes, currentBranch, gh, ghProblem, git, repoRoot, slug, tryGit } from './lib/git.mjs';
 
 const FOLDER_NAME = 'Agent Tasks';
 const SPREADSHEET_NAME = 'Ai Tasks';
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
 const SHEET_MIME = 'application/vnd.google-apps.spreadsheet';
 const STATUSES = ['To Do', 'In Progress', 'Pending', 'Complete', 'Blocked'];
+const SIGN_IN_AGAIN = 'The Google sign-in has expired or is missing (many company accounts must sign in again every 16 hours). '
+  + 'Sign the user in again as the "Google sign-in" section of the work-from-everywhere skill describes, then run this command again.';
+// The pull request's proof line until the task is delivered.
+const PROOF_PENDING = '**Proof:** added when the task is delivered.';
 
 // The sheet template: header color, a lighter tint for the column body, width in pixels.
 const COLUMNS = [
@@ -35,6 +45,7 @@ const COLUMNS = [
   { name: 'Assign datetime', header: '#2E7D32', tint: '#E8F5E9', width: 150, datetime: true },
   { name: 'Complete Datetime', header: '#558B2F', tint: '#F1F8E9', width: 150, datetime: true },
   { name: 'Proof Link', header: '#EF6C00', tint: '#FFF3E0', width: 280 },
+  { name: 'PR Link', header: '#283593', tint: '#E8EAF6', width: 280 },
   { name: 'Remark', header: '#AD1457', tint: '#FCE4EC', width: 320, wrap: true },
   { name: 'Session', header: '#4E342E', tint: '#EFEBE9', width: 290 },
 ];
@@ -59,8 +70,7 @@ function gwsIn(cwd, ...args) {
   const r = runGws(args, { cwd });
   if (r.missing) throw new Error('gws is not installed. Run the task-setup skill.');
   if (r.status === 2) {
-    const error = new Error('The Google sign-in has expired or is missing (many company accounts must sign in again every 16 hours). '
-      + 'Ask the user to run `gws auth login -s drive,sheets` in a terminal, then run this command again.');
+    const error = new Error(SIGN_IN_AGAIN);
     error.code = 'auth';
     throw error;
   }
@@ -186,16 +196,20 @@ function hex(color) {
   return { red: (n >> 16) / 255, green: ((n >> 8) & 255) / 255, blue: (n & 255) / 255 };
 }
 
-function templateRequests(sheetId) {
-  // Everything below the header row in one column, however many rows the tab grows to.
-  const columnBody = (column) => ({ sheetId, startRowIndex: 1, startColumnIndex: column, endColumnIndex: column + 1 });
-  const requests = [
-    { updateSheetProperties: { properties: { sheetId, gridProperties: { frozenRowCount: 1 } }, fields: 'gridProperties.frozenRowCount' } },
+// Everything below the header row in one column, however many rows the tab grows to.
+const columnBody = (sheetId, column) => ({ sheetId, startRowIndex: 1, startColumnIndex: column, endColumnIndex: column + 1 });
+
+// Column i's header cell, body format and width.
+function columnRequests(sheetId, i) {
+  const c = COLUMNS[i];
+  const format = { backgroundColor: hex(c.tint), verticalAlignment: 'TOP', wrapStrategy: c.wrap ? 'WRAP' : 'CLIP' };
+  if (c.datetime) format.numberFormat = { type: 'DATE_TIME', pattern: 'yyyy-mm-dd hh:mm' };
+  return [
     {
       updateCells: {
-        range: { sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: COLUMNS.length },
+        range: { sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: i, endColumnIndex: i + 1 },
         rows: [{
-          values: COLUMNS.map((c) => ({
+          values: [{
             userEnteredValue: { stringValue: c.name },
             userEnteredFormat: {
               backgroundColor: hex(c.header),
@@ -203,24 +217,25 @@ function templateRequests(sheetId) {
               verticalAlignment: 'MIDDLE',
               textFormat: { bold: true, foregroundColor: hex('#FFFFFF') },
             },
-          })),
+          }],
         }],
         fields: 'userEnteredValue,userEnteredFormat',
       },
     },
+    { repeatCell: { range: columnBody(sheetId, i), cell: { userEnteredFormat: format }, fields: `userEnteredFormat(${Object.keys(format).join(',')})` } },
+    { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: i, endIndex: i + 1 }, properties: { pixelSize: c.width }, fields: 'pixelSize' } },
+  ];
+}
+
+function templateRequests(sheetId) {
+  const requests = [
+    { updateSheetProperties: { properties: { sheetId, gridProperties: { frozenRowCount: 1 } }, fields: 'gridProperties.frozenRowCount' } },
     { updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 34 }, fields: 'pixelSize' } },
   ];
-  COLUMNS.forEach((c, i) => {
-    const format = { backgroundColor: hex(c.tint), verticalAlignment: 'TOP', wrapStrategy: c.wrap ? 'WRAP' : 'CLIP' };
-    if (c.datetime) format.numberFormat = { type: 'DATE_TIME', pattern: 'yyyy-mm-dd hh:mm' };
-    requests.push(
-      { repeatCell: { range: columnBody(i), cell: { userEnteredFormat: format }, fields: `userEnteredFormat(${Object.keys(format).join(',')})` } },
-      { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: i, endIndex: i + 1 }, properties: { pixelSize: c.width }, fields: 'pixelSize' } },
-    );
-  });
+  COLUMNS.forEach((c, i) => requests.push(...columnRequests(sheetId, i)));
   requests.push({
     setDataValidation: {
-      range: columnBody(STATUS_INDEX),
+      range: columnBody(sheetId, STATUS_INDEX),
       rule: { condition: { type: 'ONE_OF_LIST', values: STATUSES.map((s) => ({ userEnteredValue: s })) }, strict: true, showCustomUi: true },
     },
   });
@@ -230,7 +245,7 @@ function templateRequests(sheetId) {
       addConditionalFormatRule: {
         index,
         rule: {
-          ranges: [columnBody(STATUS_INDEX)],
+          ranges: [columnBody(sheetId, STATUS_INDEX)],
           booleanRule: {
             condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: status }] },
             format: { backgroundColor: hex(background), textFormat: { bold: true, foregroundColor: hex(foreground) } },
@@ -243,11 +258,16 @@ function templateRequests(sheetId) {
 }
 
 // Finds the module's tab, creating it from the template if needed. A brand-new spreadsheet's
-// empty default tab becomes the first module tab.
+// empty default tab becomes the first module tab. A tab made by an older version of the plugin
+// gets the columns added since then, in their place.
 function ensureTab(spreadsheetId, tab) {
   const { sheets } = gws('sheets', 'spreadsheets', 'get', ...params({ spreadsheetId, fields: 'sheets(properties(sheetId,title))' }));
   const tabs = sheets.map((s) => s.properties);
-  if (tabs.some((t) => t.title === tab)) return;
+  const found = tabs.find((t) => t.title === tab);
+  if (found) {
+    addMissingColumns(spreadsheetId, found);
+    return;
+  }
   const requests = [];
   let sheetId;
   const lone = tabs.length === 1 ? tabs[0] : null;
@@ -267,9 +287,31 @@ function ensureTab(spreadsheetId, tab) {
   gws('sheets', 'spreadsheets', 'batchUpdate', ...params({ spreadsheetId }), ...body({ requests }));
 }
 
+function addMissingColumns(spreadsheetId, { sheetId, title }) {
+  const { values = [] } = gws('sheets', 'spreadsheets', 'values', 'get', ...params({ spreadsheetId, range: a1(title, '1:1') }));
+  const header = values[0] || [];
+  if (!header.length || COLUMNS.every((c) => header.includes(c.name))) return;
+  const requests = [];
+  COLUMNS.forEach((c, i) => {
+    if (header.includes(c.name)) return;
+    // Inserting a column moves the ones to its right, with their data, along by one.
+    requests.push({ insertDimension: { range: { sheetId, dimension: 'COLUMNS', startIndex: i, endIndex: i + 1 }, inheritFromBefore: false } });
+    requests.push(...columnRequests(sheetId, i));
+    header.splice(i, 0, c.name);
+  });
+  gws('sheets', 'spreadsheets', 'batchUpdate', ...params({ spreadsheetId }), ...body({ requests }));
+}
+
 function taskNumbers(spreadsheetId, tab) {
   const { values = [] } = gws('sheets', 'spreadsheets', 'values', 'get', ...params({ spreadsheetId, range: a1(tab, 'A2:A') }));
   return values.map((row) => Number(row[0]));
+}
+
+// The workspace and the task's row, after making sure its tab has every column.
+function openRow(ctx, task) {
+  const ws = workspace(ctx);
+  ensureTab(ws.spreadsheetId, task.module);
+  return { ws, row: rowOf(ws.spreadsheetId, task.module, task.taskNo) };
 }
 
 function rowOf(spreadsheetId, tab, taskNo) {
@@ -342,9 +384,18 @@ function start(ctx, opts) {
   const ws = workspace(ctx);
   ensureTab(ws.spreadsheetId, opts.module);
   const taskNo = Math.max(0, ...taskNumbers(ws.spreadsheetId, opts.module).filter(Number.isFinite)) + 1;
-  const row = [taskNo, text(opts.description), status, text(opts.context), now(), '', '', '', `'${ctx.session}`];
+  const cells = {
+    'Task No': taskNo,
+    Description: text(opts.description),
+    Status: status,
+    'Context Source': text(opts.context),
+    'Assign datetime': now(),
+    Session: `'${ctx.session}`,
+  };
+  const row = COLUMNS.map((c) => cells[c.name] ?? '');
+  const lastColumn = COLUMN_LETTER[COLUMNS.at(-1).name];
   gws('sheets', 'spreadsheets', 'values', 'append',
-    ...params({ spreadsheetId: ws.spreadsheetId, range: a1(opts.module, 'A:I'), valueInputOption: 'USER_ENTERED', insertDataOption: 'OVERWRITE' }),
+    ...params({ spreadsheetId: ws.spreadsheetId, range: a1(opts.module, `A:${lastColumn}`), valueInputOption: 'USER_ENTERED', insertDataOption: 'OVERWRITE' }),
     ...body({ values: [row] }));
   remember(ctx, { module: opts.module, taskNo, title: opts.title, status });
   return { ok: true, taskNo, module: opts.module, title: opts.title, status, spreadsheetUrl: sheetUrl(ws.spreadsheetId) };
@@ -355,8 +406,7 @@ function status(ctx, opts) {
   if (!STATUSES.includes(opts.status)) throw new Error(`Status must be one of: ${STATUSES.join(', ')}`);
   if (opts.status === 'Complete') throw new Error('Complete needs proof: use the done command');
   const task = currentTask(ctx, opts);
-  const ws = workspace(ctx);
-  const row = rowOf(ws.spreadsheetId, task.module, task.taskNo);
+  const { ws, row } = openRow(ctx, task);
   const cells = { Status: opts.status };
   if (typeof opts.remark === 'string' && opts.remark) cells.Remark = withRemark(ws.spreadsheetId, task.module, row, opts.status, opts.remark);
   writeCells(ws.spreadsheetId, task.module, row, cells);
@@ -371,8 +421,7 @@ function done(ctx, opts) {
   const task = currentTask(ctx, opts);
   const title = (typeof opts.title === 'string' && opts.title) || task.title;
   if (!title) throw new Error('Pass --title; it names the Drive folder');
-  const ws = workspace(ctx);
-  const row = rowOf(ws.spreadsheetId, task.module, task.taskNo);
+  const { ws, row } = openRow(ctx, task);
 
   const moduleFolder = ensureFolder(task.module, ws.folderId);
   const name = `${String(task.taskNo).padStart(3, '0')} - ${title.replace(/\s+/g, ' ').trim()}`.slice(0, 120);
@@ -391,17 +440,114 @@ function done(ctx, opts) {
     Remark: withRemark(ws.spreadsheetId, task.module, row, 'Complete', remark),
   });
   remember(ctx, { ...task, title, status: 'Complete', proofLink });
+  const prNote = task.prUrl ? addProofToPr(task.prUrl, proofLink) : undefined;
   return {
     ok: true,
     taskNo: task.taskNo,
     module: task.module,
     status: 'Complete',
     proofLink,
+    ...(task.prUrl && { prUrl: task.prUrl }),
+    ...(prNote && { prNote }),
     sharing: sharing.scope,
     ...(sharing.reason && { sharingNote: sharing.reason }),
     uploaded: files,
     spreadsheetUrl: sheetUrl(ws.spreadsheetId),
   };
+}
+
+// ---------- git ----------
+
+const repoOf = (opts) => repoRoot(typeof opts.repo === 'string' ? opts.repo : process.cwd());
+const branchName = (task) => `task/${slug(task.module, 20)}-${String(task.taskNo).padStart(3, '0')}-${slug(task.title || 'task')}`;
+
+function branch(ctx, opts) {
+  const task = currentTask(ctx, opts);
+  const root = repoOf(opts);
+  if (!root) return { ok: true, skipped: 'The project is not a git repository, so the task gets no branch or pull request' };
+  const current = currentBranch(root);
+  const name = task.branch || branchName(task);
+  if (current === name) return { ok: true, branch: name, base: task.base, switched: false };
+  if (!current) return { ok: true, skipped: 'The repository is not on a branch (detached HEAD), so the task gets no branch or pull request' };
+  const dirty = changes(root);
+  if (dirty.length && opts['allow-dirty'] !== true) {
+    return {
+      ok: false,
+      code: 'dirty',
+      error: `The repository has ${dirty.length} uncommitted change(s) on ${current}. A task branch would carry them into the task's pull request.`,
+      files: dirty.slice(0, 20),
+    };
+  }
+  git(root, 'switch', '--quiet', ...(branchExists(root, name) ? [name] : ['-c', name]));
+  const base = task.base || current;
+  remember(ctx, { ...task, branch: name, base });
+  return { ok: true, branch: name, base, switched: true, carried: dirty.length };
+}
+
+function pr(ctx, opts) {
+  const task = currentTask(ctx, opts);
+  if (!task.branch) return { ok: true, skipped: 'This task has no branch, so there is no pull request to open' };
+  const root = repoOf(opts);
+  if (!root) throw new Error('The project is not a git repository. Pass --repo with its folder');
+  const current = currentBranch(root);
+  if (current !== task.branch) throw new Error(`The repository is on ${current || 'a detached HEAD'}, not the task branch ${task.branch}. Switch back to it first`);
+
+  let committed = null;
+  if (changes(root).length) {
+    git(root, 'add', '--all');
+    git(root, 'commit', '--quiet', '-m', (typeof opts.message === 'string' && opts.message) || task.title || task.branch);
+    committed = git(root, 'rev-parse', '--short', 'HEAD');
+  }
+  const ahead = Number(tryGit(root, 'rev-list', '--count', `${task.base}..HEAD`) || 0);
+  if (!ahead) return { ok: true, branch: task.branch, skipped: `The branch has no commits beyond ${task.base}, so there is no pull request` };
+  if (!tryGit(root, 'remote', 'get-url', 'origin')) {
+    return { ok: true, branch: task.branch, committed, pushed: false, skipped: 'The repository has no "origin" remote, so the branch stays on this computer' };
+  }
+  git(root, 'push', '--quiet', '--set-upstream', 'origin', task.branch);
+  const problem = ghProblem(root);
+  if (problem) return { ok: true, branch: task.branch, committed, pushed: true, skipped: `${problem}. The branch is pushed, but no pull request was opened` };
+
+  const { ws, row } = openRow(ctx, task);
+  let prUrl = existingPr(root, task.branch);
+  const created = !prUrl;
+  if (created) {
+    const summary = (typeof opts.summary === 'string' && opts.summary) || readCell(ws.spreadsheetId, task.module, row, 'Description');
+    const prBody = [
+      summary,
+      '',
+      `**Task:** ${task.module} #${task.taskNo} in the [Ai Tasks sheet](${sheetUrl(ws.spreadsheetId)})`,
+      task.proofLink ? `**Proof:** ${task.proofLink}` : PROOF_PENDING,
+    ].join('\n');
+    const out = gh(root, ['pr', 'create', '--base', task.base, '--head', task.branch, '--title', task.title || task.branch, '--body', prBody]);
+    prUrl = out.split('\n').map((l) => l.trim()).filter((l) => l.startsWith('https://')).pop();
+    if (!prUrl) throw new Error(`gh pr create didn't print the pull request's link: ${out}`);
+  }
+  writeCells(ws.spreadsheetId, task.module, row, { 'PR Link': prUrl });
+  remember(ctx, { ...task, prUrl });
+  return { ok: true, branch: task.branch, base: task.base, committed, pushed: true, prUrl, created };
+}
+
+function existingPr(root, head) {
+  try {
+    return JSON.parse(gh(root, ['pr', 'list', '--head', head, '--state', 'open', '--json', 'url', '--limit', '1']) || '[]')[0]?.url || null;
+  } catch {
+    return null;
+  }
+}
+
+// Puts the proof link in the pull request's description. A failure is reported rather than thrown,
+// because by then the task is already delivered.
+function addProofToPr(prUrl, proofLink) {
+  try {
+    const { body: old = '' } = JSON.parse(gh(undefined, ['pr', 'view', prUrl, '--json', 'body']));
+    const line = `**Proof:** ${proofLink}`;
+    if (old.includes(line)) return undefined;
+    const updated = /^\*\*Proof:\*\*.*$/m.test(old) ? old.replace(/^\*\*Proof:\*\*.*$/m, line) : `${old}\n\n${line}`;
+    gh(undefined, ['pr', 'edit', prUrl, '--body', updated]);
+    return undefined;
+  } catch (error) {
+    return `The proof link couldn't be added to the pull request: ${error.message}`;
+  }
 }
 
 function show(ctx) {
@@ -448,7 +594,7 @@ function parseArgs(argv) {
   return { command, opts };
 }
 
-const commands = { check, ensure, start, status, done, show };
+const commands = { check, ensure, start, status, branch, pr, done, show };
 try {
   const { command, opts } = parseArgs(process.argv.slice(2));
   if (!commands[command]) throw new Error(`Unknown command "${command}". Use one of: ${Object.keys(commands).join(', ')}`);

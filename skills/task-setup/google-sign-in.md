@@ -41,16 +41,20 @@ A team only needs to do option B or C once. After that, share the file as in opt
 
 ## Step 2: sign in (again whenever it expires)
 
-Run this in a terminal. In the Claude desktop app, use its Terminal panel; in the Claude CLI, type `! ` followed by the command.
+Claude does this, and it works from a phone, so the user doesn't need a terminal. Follow the **Google sign-in** section of the work-from-everywhere skill:
 
-```bash
-gws auth login -s drive,sheets
-```
+1. `node "${CLAUDE_PLUGIN_ROOT}/scripts/signin.mjs" start --data "${CLAUDE_PLUGIN_DATA}"` starts `gws auth login` in the background and prints a sign-in link.
+2. The user opens the link, picks the Google account and approves the access.
+   - On this computer, the sign-in finishes by itself.
+   - On a phone, Google sends the browser back to `http://localhost:<port>`, which is this computer, so the page fails to load. The user copies that page's address and pastes it to Claude.
+3. `node "${CLAUDE_PLUGIN_ROOT}/scripts/signin.mjs" finish --data "${CLAUDE_PLUGIN_DATA}" --url '<pasted address>'` hands the code to the waiting `gws`, which saves the sign-in. Leave out `--url` when the user approved on this computer.
 
-- A browser opens. Pick the Google account and approve the access.
-- If Google says "Google hasn't verified this app", click **Advanced**, then **Go to (app name)**. This is expected for a team's own OAuth client.
-- `-s drive,sheets` asks only for what this plugin needs. To use the plugin's other gws skills, add their services, for example `-s drive,sheets,gmail,calendar`. Avoid `--full` with an unverified app, because Google blocks apps that ask for too many scopes.
-- **Many company accounts must sign in again every 16 hours.** When the plugin reports that the sign-in expired, run the same command again.
+Notes:
+
+- If Google says "Google hasn't verified this app", tap **Advanced**, then **Go to (app name)**. This is expected for a team's own OAuth client.
+- The sign-in asks for Drive and Sheets only. To use the plugin's other gws skills too, add `--services 'drive,sheets,gmail,calendar'` (with the services needed) to `start`. Avoid asking for every scope with an unverified app, because Google blocks apps that ask for too many.
+- **Many company accounts must sign in again every 16 hours.** Claude starts a new sign-in whenever the plugin reports that it expired.
+- The user can still sign in from a terminal on this computer: `gws auth login -s drive,sheets`.
 
 ## Troubleshooting
 

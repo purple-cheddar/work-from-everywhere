@@ -8,7 +8,7 @@
     {
       "name": "work-from-everywhere",
       "source": "./",
-      "description": "Tracked tasks with proof: /work-from-everywhere logs each task in a Google Sheet, captures device screenshots and video, and files them in Google Drive."
+      "description": "Tracked tasks with proof, workable from a phone: /work-from-everywhere logs each task in a Google Sheet, works on a git branch, captures device screenshots and MP4 video, opens a GitHub pull request, and files the proof in Google Drive."
     }
   ]
 }

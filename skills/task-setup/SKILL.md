@@ -1,10 +1,11 @@
 ---
 name: task-setup
-description: Check and set up everything the work-from-everywhere plugin needs on this machine (Node.js, the gws CLI and its Google sign-in, Playwright and its browsers), walking the user through each missing piece, then save the project's module name and app URL. Use on the first /work-from-everywhere run on a machine, when its setup check fails, or when the user asks to set up or recheck the plugin, or to change the project's module name or app URL.
+description: Check and set up everything the work-from-everywhere plugin needs on this machine (Node.js, the gws CLI and its Google sign-in, Playwright, its browsers and the MP4 encoder), walking the user through each missing piece, then save the project's module name, app URL and pull request setting. Use on the first /work-from-everywhere run on a machine, when its setup check fails, or when the user asks to set up or recheck the plugin, or to change the project's module name, app URL or pull request setting.
 user-invocable: false
 allowed-tools:
   - Bash(node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs" *)
   - Bash(node "${CLAUDE_PLUGIN_ROOT}/scripts/tracker.mjs" *)
+  - Bash(node "${CLAUDE_PLUGIN_ROOT}/scripts/signin.mjs" *)
 ---
 
 # Set up the plugin
@@ -45,6 +46,7 @@ Take the failed checks in the order listed. For each one:
 | `google-connection` | Google couldn't be reached | Ask the user to check their internet connection |
 | `playwright` | The browser automation library for screenshots | The `fix` command, with the user's OK (about 13 MB) |
 | `chromium`, `webkit`, `video` | The browsers and the video encoder Playwright drives | The `fix` command, with the user's OK (a few hundred MB). On Linux, a missing-dependencies fix is a `sudo` command the user runs |
+| `mp4` | An ffmpeg build that turns the WebM videos Playwright records into MP4, which iPhones play | The `fix` command, with the user's OK (about 80 MB) |
 
 A check with a `warning` still passes; mention the warning once.
 
@@ -59,12 +61,14 @@ Create or update `${CLAUDE_PROJECT_DIR}/.claude/work-from-everywhere.json`:
   "module": "Checkout",
   "baseUrl": "http://localhost:3000",
   "startCommand": "npm run dev",
-  "login": []
+  "login": [],
+  "pullRequests": true
 }
 ```
 
 - `module` (required) names the task's Drive folder and sheet tab. Suggest one from the repository or folder name, and confirm it with the user.
 - `baseUrl` and `startCommand` say where the app runs and how to start it, for UI screenshots. Suggest values from package.json scripts, the framework config or `.claude/launch.json`. Leave them out for a project without a UI.
+- `pullRequests` (optional, default `true`): each task gets its own git branch, and delivering it opens a GitHub pull request, ready for review. Set it to `false` for a project that isn't on GitHub or where tasks shouldn't open pull requests. Opening pull requests needs the GitHub CLI signed in (`gh auth status`); if it isn't, tell the user to install it from https://cli.github.com and run `gh auth login`.
 - `login` (optional) holds steps that sign in to the app before screenshots, in the step format of the `task-proof` skill. Use only test accounts from the project's own seed or fixture files, and write secrets as `${ENV_VAR}` references, which are read from the environment, rather than putting them in the file.
 
 Skip this step when the config already exists and the user didn't ask to change it.

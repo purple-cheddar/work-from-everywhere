@@ -23,7 +23,8 @@ function findGws() {
 }
 
 let cached;
-const gwsCommand = () => (cached === undefined ? (cached = findGws()) : cached);
+// The command that starts gws, as [executable, ...arguments], or null when it isn't installed.
+export const gwsCommand = () => (cached === undefined ? (cached = findGws()) : cached);
 
 function outcome(status, stdout, stderr) {
   const text = (stdout || '').trim();

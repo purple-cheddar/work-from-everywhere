@@ -2,12 +2,16 @@
 // Proof capture for the /work-from-everywhere workflow, using Playwright.
 //
 //   node capture.mjs check   --data <plugin data dir>
-//   node capture.mjs install --data <plugin data dir> [--browsers]
+//   node capture.mjs install --data <plugin data dir> [--browsers] [--mp4]
 //   node capture.mjs shots   --data <plugin data dir> (--spec-json '<json>' | --spec <file>)
 //   node capture.mjs text    --data <plugin data dir> --in <log.txt> --out <image.png> [--title <title>]
 //
 // Playwright is installed in the plugin's data folder, pinned to the version whose browsers are
 // already in the local Playwright cache, so no browser download is needed.
+//
+// Playwright records WebM, which iPhones often won't play, and its own ffmpeg can only write WebM.
+// --mp4 installs the ffmpeg-static package (an ffmpeg build with H.264) into the data folder, and
+// each video is then converted to MP4.
 //
 // A "shots" spec:
 //   {
@@ -33,6 +37,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 const PLAYWRIGHT = 'playwright-core@1.62.1';
+const FFMPEG = 'ffmpeg-static@5.3.0';
 
 // Mainstream sizes, smallest first. Named presets come from Playwright's device list and carry the
 // real viewport, pixel ratio, user agent and engine (WebKit for Apple devices).
@@ -71,20 +76,47 @@ function check(ctx) {
   }
   const { version } = JSON.parse(fs.readFileSync(path.join(ctx.data, 'node_modules', 'playwright-core', 'package.json'), 'utf8'));
   const browsers = { chromium: fs.existsSync(pw.chromium.executablePath()), webkit: fs.existsSync(pw.webkit.executablePath()) };
-  return { ok: true, ready: browsers.chromium && browsers.webkit, playwright: version, browsers };
+  return { ok: true, ready: browsers.chromium && browsers.webkit, playwright: version, browsers, mp4: !!mp4Encoder(ctx.data) };
 }
 
 function install(ctx, opts) {
   fs.mkdirSync(ctx.data, { recursive: true });
+  const packages = opts.mp4 ? `${PLAYWRIGHT} ${FFMPEG}` : PLAYWRIGHT;
   // npm is a .cmd shim on Windows, so it needs a shell; every argument here is fixed or quoted.
-  const npm = spawnSync(`npm install --prefix "${ctx.data}" ${PLAYWRIGHT} --no-audit --no-fund --loglevel=error`, { shell: true, encoding: 'utf8' });
+  const npm = spawnSync(`npm install --prefix "${ctx.data}" ${packages} --no-audit --no-fund --loglevel=error`, { shell: true, encoding: 'utf8' });
   if (npm.status !== 0) throw new Error(`npm install failed: ${(npm.stderr || npm.stdout).trim().slice(-800)}`);
   if (opts.browsers) {
     const cli = path.join(ctx.data, 'node_modules', 'playwright-core', 'cli.js');
     const r = spawnSync(process.execPath, [cli, 'install', 'chromium', 'webkit', 'ffmpeg'], { encoding: 'utf8' });
     if (r.status !== 0) throw new Error(`Browser download failed: ${(r.stderr || r.stdout).trim().slice(-800)}`);
   }
+  // ffmpeg-static downloads its binary in an install script, which newer npm versions skip.
+  if (opts.mp4 && !mp4Encoder(ctx.data)) {
+    const r = spawnSync(process.execPath, ['install.js'], { cwd: path.join(ctx.data, 'node_modules', 'ffmpeg-static'), encoding: 'utf8' });
+    if (r.status !== 0 || !mp4Encoder(ctx.data)) throw new Error(`The MP4 encoder download failed: ${(r.stderr || r.stdout || '').trim().slice(-800)}`);
+  }
   return check(ctx);
+}
+
+// The path of the ffmpeg build that can write MP4, or null when it isn't installed.
+function mp4Encoder(data) {
+  try {
+    const file = createRequire(path.join(data, 'index.js'))('ffmpeg-static');
+    return file && fs.existsSync(file) ? file : null;
+  } catch {
+    return null;
+  }
+}
+
+// Converts a WebM recording to an MP4 (H.264) that phones play, with the moov atom first so it
+// starts playing before it has fully downloaded. H.264 needs even dimensions, hence the scale.
+function toMp4(ffmpeg, input, output) {
+  const r = spawnSync(ffmpeg, [
+    '-y', '-loglevel', 'error', '-i', input,
+    '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+    '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-an', output,
+  ], { encoding: 'utf8' });
+  if (r.status !== 0) throw new Error((r.stderr || r.error?.message || `exit code ${r.status}`).trim().split('\n').pop());
 }
 
 async function shots(ctx, opts) {
@@ -100,7 +132,7 @@ async function shots(ctx, opts) {
 
   const pw = playwright(ctx.data);
   const devices = (spec.devices || DEFAULT_DEVICES).map((d, i) => device(pw, d, i));
-  const result = { ok: true, out, screenshots: [], videos: [], errors: [] };
+  const result = { ok: true, out, screenshots: [], videos: [], errors: [], warnings: [] };
 
   if (spec.pages?.length) {
     const dir = path.join(out, 'Screenshots');
@@ -141,6 +173,8 @@ async function shots(ctx, opts) {
     const dir = path.join(out, 'Video');
     fs.mkdirSync(dir, { recursive: true });
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wfe-video-'));
+    const ffmpeg = mp4Encoder(ctx.data);
+    if (!ffmpeg) result.warnings.push('Videos are WebM, which many iPhones won\'t play, because the MP4 encoder isn\'t installed. Run the task-setup skill.');
     const browser = await pw.chromium.launch();
     try {
       for (const v of VIDEOS) {
@@ -157,8 +191,22 @@ async function shots(ctx, opts) {
           result.errors.push(`${v.name} video: ${firstLine(e)}`);
         }
         await context.close();
-        const file = path.join(dir, `${safe(spec.video.name || 'Walkthrough')} - ${v.name}.webm`);
-        await page.video().saveAs(file);
+        const base = path.join(dir, `${safe(spec.video.name || 'Walkthrough')} - ${v.name}`);
+        const webm = path.join(tmp, `${v.name}.webm`);
+        await page.video().saveAs(webm);
+        // A retake replaces the earlier video in either format.
+        for (const ext of ['.mp4', '.webm']) fs.rmSync(base + ext, { force: true });
+        let file = `${base}.webm`;
+        if (ffmpeg) {
+          try {
+            toMp4(ffmpeg, webm, `${base}.mp4`);
+            file = `${base}.mp4`;
+          } catch (e) {
+            fs.rmSync(`${base}.mp4`, { force: true });
+            result.warnings.push(`${v.name} video kept as WebM, because the MP4 conversion failed: ${firstLine(e)}`);
+          }
+        }
+        if (file.endsWith('.webm')) fs.copyFileSync(webm, file);
         result.videos.push(path.relative(out, file));
       }
     } finally {

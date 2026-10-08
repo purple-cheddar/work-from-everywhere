@@ -7,7 +7,7 @@
 //       the Google sign-in, which many company accounts must renew every 16 hours.
 //   node setup.mjs check --data <plugin data dir>
 //       Checks everything: Node.js, npm, Git Bash (Windows), gws, the Google sign-in and its access
-//       to Drive and Sheets, Playwright and its browsers. When everything passes it records this
+//       to Drive and Sheets, Playwright, its browsers and the MP4 encoder. When everything passes it records this
 //       machine's setup in <data>/setup.json, so later preflights go straight to the sign-in check.
 //
 // Always exits 0 and prints JSON. The entry skill runs preflight before Claude reads the skill,
@@ -22,12 +22,12 @@ import { fileURLToPath } from 'node:url';
 import { runGws } from './lib/gws.mjs';
 
 // Bump when the plugin gains a requirement, so machines set up earlier run the full check again.
-const SETUP_VERSION = 1;
+const SETUP_VERSION = 2; // 2: the MP4 encoder
 const MIN_NODE = 18;
 const TESTED_GWS = '0.22.5';
-const LOGIN = 'gws auth login -s drive,sheets';
 const SCRIPTS = path.dirname(fileURLToPath(import.meta.url)).replace(/\\/g, '/');
 const SIGN_IN_GUIDE = `${path.posix.dirname(SCRIPTS)}/skills/task-setup/google-sign-in.md`;
+const SIGN_IN = 'Sign the user in as the "Google sign-in" section of the work-from-everywhere skill describes (it works from a phone too)';
 
 const pass = (id, detail) => ({ id, ok: true, detail });
 const fail = (id, detail, who, fix) => ({ id, ok: false, detail, who, fix });
@@ -87,7 +87,7 @@ function older(a, b) {
 
 function signInExpired() {
   return fail('google-sign-in', 'The Google sign-in has expired or is missing', 'user',
-    `Ask the user to run \`${LOGIN}\` in a terminal; many company accounts must sign in again every 16 hours. Details: step 2 of ${SIGN_IN_GUIDE}`);
+    `${SIGN_IN}. Many company accounts must sign in again every 16 hours. Details: step 2 of ${SIGN_IN_GUIDE}`);
 }
 
 // A cheap authenticated call. gws exits 2 when the sign-in is missing, expired or revoked.
@@ -108,7 +108,7 @@ function explainSignIn() {
     return fail('google-oauth-client', 'gws has no OAuth client (client_secret.json) yet', 'user', `Walk the user through ${SIGN_IN_GUIDE}, starting at step 1.`);
   }
   if (!s.has_refresh_token) {
-    return fail('google-sign-in', 'Not signed in to Google yet', 'user', `Ask the user to run \`${LOGIN}\` in a terminal. Details: step 2 of ${SIGN_IN_GUIDE}`);
+    return fail('google-sign-in', 'Not signed in to Google yet', 'user', `${SIGN_IN}. Details: step 2 of ${SIGN_IN_GUIDE}`);
   }
   return signInExpired();
 }
@@ -127,7 +127,7 @@ function apiProblem(r, api) {
   const message = error.message || r.stderr || r.text || `exit code ${r.status}`;
   if (error.code === 403 && /scope/i.test(message)) {
     return fail('google-scopes', `The sign-in doesn't allow the ${api}: ${message}`, 'user',
-      `Ask the user to run \`${LOGIN}\` and allow Drive and Sheets access on the consent screen.`);
+      `${SIGN_IN}, and ask the user to allow Drive and Sheets access on the consent screen.`);
   }
   if (error.code === 403 && /has not been used|is disabled|SERVICE_DISABLED|accessNotConfigured/i.test(message)) {
     return fail('google-apis', `The ${api} isn't enabled for the gws Google Cloud project`, 'user',
@@ -206,7 +206,23 @@ async function checkBrowsers(data) {
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
+  checks.push(checkMp4(data));
   return checks;
+}
+
+// Playwright's own ffmpeg only writes WebM, which many iPhones won't play. The ffmpeg-static package
+// brings an ffmpeg that writes MP4 (H.264), and capture.mjs converts each video with it.
+function checkMp4(data) {
+  const fix = `With the user's OK (it downloads an ffmpeg build of about 80 MB), run: node "${SCRIPTS}/capture.mjs" install --data "${data}" --mp4`;
+  let ffmpeg;
+  try {
+    ffmpeg = createRequire(path.join(data, 'index.js'))('ffmpeg-static');
+  } catch {
+    return fail('mp4', "The MP4 encoder isn't installed, so videos would be WebM, which many iPhones won't play", 'claude', fix);
+  }
+  const r = ffmpeg && fs.existsSync(ffmpeg) ? spawnSync(ffmpeg, ['-hide_banner', '-encoders'], { encoding: 'utf8' }) : null;
+  if (r?.status === 0 && /libx264/.test(r.stdout)) return pass('mp4', 'MP4 (H.264) encoder works');
+  return fail('mp4', "The MP4 encoder is installed but doesn't run", 'claude', fix);
 }
 
 // ---------- commands ----------
