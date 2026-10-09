@@ -19,7 +19,7 @@ allowed-tools:
 Do this task while keeping its row in the **Ai Tasks** Google Sheet up to date, then deliver proof. These instructions apply for the whole task, including later turns.
 
 - Session ID: `${CLAUDE_SESSION_ID}`
-- Project config: `${CLAUDE_PROJECT_DIR}/.claude/work-from-everywhere.json`. Read it for `module`, `baseUrl` and `pullRequests`. If it doesn't exist, run the `task-setup` skill first.
+- Project config: `.claude/work-from-everywhere.json` in the session's working directory, which is the worktree when the session runs in one. If it isn't there, use `${CLAUDE_PROJECT_DIR}/.claude/work-from-everywhere.json`. Read it for `module`, `baseUrl` and `pullRequests`. If neither exists, run the `task-setup` skill first.
 - The user may be following along from their phone, through Remote Control or the Claude app. Keep messages short, and put links on their own line so they're easy to tap.
 - Run tracker commands with the **Bash tool**, each on its own and with the quoting shown, so they run without a permission prompt. Put values in single quotes, and write a single quote inside a value as `'\''`. Don't start a value with `/`, because Git Bash turns it into a Windows path: write `Cart page (/cart)`, not `/cart page`. Each command prints JSON: check `ok`, and if it's false show the `error` to the user.
 
@@ -77,8 +77,10 @@ It saves readable copies (Docs as Markdown, Sheets as one CSV per tab, Slides as
 5. Give the task its own git branch, so it can be reviewed and merged as a pull request. Skip this when the project config has `"pullRequests": false`.
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/tracker.mjs" branch --data "${CLAUDE_PLUGIN_DATA}" --session "${CLAUDE_SESSION_ID}" --repo "${CLAUDE_PROJECT_DIR}"
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/tracker.mjs" branch --data "${CLAUDE_PLUGIN_DATA}" --session "${CLAUDE_SESSION_ID}"
    ```
+
+   It branches the repository in the session's working directory, so run it from there (the worktree, when the session runs in one). The pull request will merge into the branch you were on, or into the repository's default branch (such as `main`) when GitHub doesn't have that branch, as with a desktop-app worktree's `claude/...` branch.
 
    - `ok` is true with a `branch`: work on that branch. If `carried` is more than 0, the user's uncommitted changes came along and will be part of the pull request.
    - `skipped`: the project isn't a git repository, or isn't on a branch. Mention the reason in one line and do the task without a branch.

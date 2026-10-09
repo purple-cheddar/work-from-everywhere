@@ -52,6 +52,23 @@ export const currentBranch = (cwd) => tryGit(cwd, 'symbolic-ref', '--quiet', '--
 
 export const branchExists = (cwd, name) => tryGit(cwd, 'rev-parse', '--verify', '--quiet', `refs/heads/${name}`) !== null;
 
+// The branch "origin" opens on (usually main), from the local origin/HEAD or else by asking the remote.
+export function remoteDefaultBranch(cwd) {
+  const local = tryGit(cwd, 'symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD');
+  if (local) return local.replace(/^origin\//, '');
+  const head = tryGit(cwd, 'ls-remote', '--symref', 'origin', 'HEAD');
+  return head?.match(/^ref: refs\/heads\/(\S+)\s+HEAD/m)?.[1] || null;
+}
+
+// The branch a pull request can merge into: `name` when "origin" has it, otherwise the remote's default
+// branch. A desktop-app worktree starts on a local-only branch such as claude/<name>, which GitHub
+// can't use as a base. Without an "origin" remote, `name` is kept.
+export function prBase(cwd, name) {
+  if (!tryGit(cwd, 'remote', 'get-url', 'origin')) return name;
+  if (tryGit(cwd, 'ls-remote', '--exit-code', '--heads', 'origin', `refs/heads/${name}`) !== null) return name;
+  return remoteDefaultBranch(cwd) || name;
+}
+
 export function slug(text, max = 40) {
   return String(text).toLowerCase().normalize('NFKD').replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-')
     .replace(/^-|-$/g, '').slice(0, max).replace(/-$/, '') || 'task';

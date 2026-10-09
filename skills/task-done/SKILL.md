@@ -17,13 +17,13 @@ Both commands act on the session's current task. For a different task, add `--mo
 Skip this step when the task has no branch (the project config has `"pullRequests": false`, or the branch step was skipped).
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/tracker.mjs" pr --data "${CLAUDE_PLUGIN_DATA}" --session "${CLAUDE_SESSION_ID}" --repo "${CLAUDE_PROJECT_DIR}" --message '<commit message>' --summary '<pull request description>'
+node "${CLAUDE_PLUGIN_ROOT}/scripts/tracker.mjs" pr --data "${CLAUDE_PLUGIN_DATA}" --session "${CLAUDE_SESSION_ID}" --message '<commit message>' --summary '<pull request description>'
 ```
 
 - `--message`: the commit message for the task's uncommitted changes. A short subject line, then a blank line and the details, in the repository's usual style, with any attribution lines your instructions ask for.
 - `--summary`: the start of the pull request's description. What changed and why, and how it was checked, in a few lines or bullets. The command adds the task's sheet link and a proof line below it.
 
-It commits every uncommitted change in the repository to the task branch, pushes the branch to `origin`, opens a pull request that's ready for review against the branch the task started from, and puts its link in the task's PR Link column. Running it again pushes new commits and reuses the open pull request.
+Run it from the session's working directory (the worktree, when the session runs in one). It commits every uncommitted change in that repository to the task branch, pushes the branch to `origin`, opens a pull request that's ready for review against the branch the task started from (or the repository's default branch, when GitHub doesn't have that one), and puts its link in the task's PR Link column. Running it again pushes new commits and reuses the open pull request.
 
 - `prUrl`: the pull request.
 - `skipped`: no pull request was opened, and the reason says why (no changes, no `origin` remote, the remote isn't GitHub, or `gh` is missing or signed out). Tell the user the reason in one line, and go on to step 2. When the fix is the user's, such as `gh auth login`, mention it.
