@@ -37,9 +37,9 @@ Windows 11, Claude desktop app (Code tab) in a worktree session, installed plugi
 | 8 | **Bug, fixed in 0.7.1** | `--repo "${CLAUDE_PROJECT_DIR}"` pointed at the main checkout, not the worktree, and the base became the worktree's local `claude/...` branch, which `gh pr create` can't use. Now the skills use the working directory, and `prBase()` falls back to the remote's default branch: `base: main` |
 | 9 | Partly tested | `bad-link` checked. Drive links were tested in 0.4.0 |
 | 10 | Pass | Logs-only proof, since the plugin has no web UI. Screenshots and videos weren't exercised |
-| 11 | See the PR | First real test of `gh pr create` |
-| 12 | See the PR | First real test of adding the proof link to the PR description |
-| 13 | See the PR | This file's results were pushed with a second `pr` |
+| 11 | Pass | First real test of `gh pr create`: [#1](https://github.com/purple-cheddar/work-from-everywhere/pull/1), ready for review, against `main` |
+| 12 | Pass | 10 proof files uploaded and shared as "Anyone with the link", row Complete, and the proof link added to the PR description (first real test) |
+| 13 | Pass | These results were pushed to the same PR with a second `pr` |
 | 14 | Not tested | The desktop session was in front of the user, so notifications were skipped as redundant |
 
 `prBase()` checks (7 of 7 passed): a local-only branch falls back to `main`, a branch GitHub has is kept, a repository with no `origin` keeps its branch, and the default branch is found through `git ls-remote` when `origin/HEAD` was never fetched.
