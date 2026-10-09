@@ -1,7 +1,7 @@
 {
   "name": "work-from-everywhere",
   "description": "Tracked tasks with proof, workable from a phone: /work-from-everywhere logs each task in a Google Sheet, works on a git branch, captures device screenshots and MP4 video, opens a GitHub pull request, files the proof in Google Drive, and sends push notifications. Includes the gws Google Workspace skills.",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "author": {
     "name": "purple-cheddar"
   }

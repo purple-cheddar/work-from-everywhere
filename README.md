@@ -106,7 +106,7 @@ Each module has its own tab with these columns: Task No, Description, Status, Co
 
 ## Project config
 
-Tracking needs `.claude/work-from-everywhere.json` in the project. The first `/work-from-everywhere` in a project runs `task-setup`, which asks you for these values:
+Tracking needs `.claude/work-from-everywhere.json` in the project. In a desktop-app worktree session, Claude reads the worktree's copy first, then the main checkout's. The first `/work-from-everywhere` in a project runs `task-setup`, which asks you for these values:
 
 ```json
 {
@@ -120,7 +120,7 @@ Tracking needs `.claude/work-from-everywhere.json` in the project. The first `/w
 
 - `module` (required) names the Drive folder and the sheet tab.
 - `baseUrl` and `startCommand` say where the app runs, for UI screenshots.
-- `pullRequests` (optional, default `true`): each task gets a `task/<module>-<NNN>-<title>` branch, made from the branch you were on, and delivering it opens a pull request against that branch. If the repository has uncommitted changes when a task starts, Claude asks whether to bring them into the task's branch or do the task without one. Set it to `false` to work on the current branch with no pull requests.
+- `pullRequests` (optional, default `true`): each task gets a `task/<module>-<NNN>-<title>` branch, made from the branch you were on, and delivering it opens a pull request against that branch. When GitHub doesn't have that branch, such as the local `claude/...` branch of a desktop-app worktree session, the pull request goes against the repository's default branch (usually `main`). If the repository has uncommitted changes when a task starts, Claude asks whether to bring them into the task's branch or do the task without one. Set it to `false` to work on the current branch with no pull requests.
 - `login` (optional) holds sign-in steps for the app. `${ENV_VAR}` in a step value is read from the environment.
 
 ## Hooks
@@ -167,6 +167,7 @@ Uninstalling the plugin deletes this folder.
 | `scripts/lib/gws.mjs` | Runs `gws` without a shell, so JSON arguments arrive intact |
 | `scripts/lib/git.mjs` | Runs `git` and `gh` without a shell, for task branches and pull requests |
 | `hooks/hooks.json` | Registers both hooks |
+| `TESTING.md` | End-to-end test checklist, with the latest run's results |
 
 ## Troubleshooting
 
@@ -178,6 +179,7 @@ Uninstalling the plugin deletes this folder.
 | The task was delivered without a pull request | The reason is in Claude's message: no `origin` remote, a remote that isn't GitHub, or `gh` missing or signed out | Fix the reason (for example `gh auth login`), then ask Claude to "open the pull request for task N" |
 | Videos are `.webm` and won't play on an iPhone | The MP4 encoder isn't installed | Ask Claude to "recheck the work-from-everywhere setup", then "retake the proof for task N" |
 | No push notification arrives | Notifications reach the phone only while Remote Control is connected, and Claude skips them when you're already looking at the session | Connect the session with Remote Control from the Claude app |
+| A worktree session can't save the project config, or `gh pr create` fails with a base branch GitHub doesn't have | Fixed in 0.7.1. Earlier versions used the main checkout instead of the worktree, and made the worktree's local `claude/...` branch the pull request's base | Update the plugin |
 | The first run says setup is needed after an update or reinstall | Each installed copy keeps its own data folder | Let the setup run once. It remembers the machine afterwards |
 
 ## Maintaining

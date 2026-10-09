@@ -24,7 +24,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { runGws } from './lib/gws.mjs';
-import { branchExists, changes, currentBranch, gh, ghProblem, git, repoRoot, slug, tryGit } from './lib/git.mjs';
+import { branchExists, changes, currentBranch, gh, ghProblem, git, prBase, repoRoot, slug, tryGit } from './lib/git.mjs';
 
 const FOLDER_NAME = 'Agent Tasks';
 const SPREADSHEET_NAME = 'Ai Tasks';
@@ -479,7 +479,7 @@ function branch(ctx, opts) {
     };
   }
   git(root, 'switch', '--quiet', ...(branchExists(root, name) ? [name] : ['-c', name]));
-  const base = task.base || current;
+  const base = task.base || prBase(root, current);
   remember(ctx, { ...task, branch: name, base });
   return { ok: true, branch: name, base, switched: true, carried: dirty.length };
 }
@@ -498,8 +498,10 @@ function pr(ctx, opts) {
     git(root, 'commit', '--quiet', '-m', (typeof opts.message === 'string' && opts.message) || task.title || task.branch);
     committed = git(root, 'rev-parse', '--short', 'HEAD');
   }
-  const ahead = Number(tryGit(root, 'rev-list', '--count', `${task.base}..HEAD`) || 0);
-  if (!ahead) return { ok: true, branch: task.branch, skipped: `The branch has no commits beyond ${task.base}, so there is no pull request` };
+  // Checked again here, for tasks branched before the base fell back to the remote's default branch.
+  const base = prBase(root, task.base);
+  const ahead = Number(tryGit(root, 'rev-list', '--count', `${base}..HEAD`) || tryGit(root, 'rev-list', '--count', `origin/${base}..HEAD`) || 0);
+  if (!ahead) return { ok: true, branch: task.branch, skipped: `The branch has no commits beyond ${base}, so there is no pull request` };
   if (!tryGit(root, 'remote', 'get-url', 'origin')) {
     return { ok: true, branch: task.branch, committed, pushed: false, skipped: 'The repository has no "origin" remote, so the branch stays on this computer' };
   }
@@ -518,13 +520,13 @@ function pr(ctx, opts) {
       `**Task:** ${task.module} #${task.taskNo} in the [Ai Tasks sheet](${sheetUrl(ws.spreadsheetId)})`,
       task.proofLink ? `**Proof:** ${task.proofLink}` : PROOF_PENDING,
     ].join('\n');
-    const out = gh(root, ['pr', 'create', '--base', task.base, '--head', task.branch, '--title', task.title || task.branch, '--body', prBody]);
+    const out = gh(root, ['pr', 'create', '--base', base, '--head', task.branch, '--title', task.title || task.branch, '--body', prBody]);
     prUrl = out.split('\n').map((l) => l.trim()).filter((l) => l.startsWith('https://')).pop();
     if (!prUrl) throw new Error(`gh pr create didn't print the pull request's link: ${out}`);
   }
   writeCells(ws.spreadsheetId, task.module, row, { 'PR Link': prUrl });
-  remember(ctx, { ...task, prUrl });
-  return { ok: true, branch: task.branch, base: task.base, committed, pushed: true, prUrl, created };
+  remember(ctx, { ...task, base, prUrl });
+  return { ok: true, branch: task.branch, base, committed, pushed: true, prUrl, created };
 }
 
 function existingPr(root, head) {

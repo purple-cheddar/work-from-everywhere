@@ -54,7 +54,7 @@ When every check passes, the output shows `setupSaved: true`: the machine is rec
 
 ## 3. Project config
 
-Create or update `${CLAUDE_PROJECT_DIR}/.claude/work-from-everywhere.json`:
+Create or update `.claude/work-from-everywhere.json` in the session's working directory. In a desktop-app worktree session that's the worktree's copy, because the app doesn't let a worktree session write the main checkout's `.claude/` folder. It's then committed with the task's pull request, and every checkout has it once that's merged.
 
 ```json
 {
